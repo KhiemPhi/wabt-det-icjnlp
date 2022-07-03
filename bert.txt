@@ -1,0 +1,39 @@
+Number of finished trials: 1
+Best trial:
+  Validation-F1: 34.32343292236328
+  Params Optimized: 
+    gamma: 0.8321041099072682
+    beta: 0.9077887480573555
+                  precision    recall  f1-score   support
+
+
+
+Non-Whataboutism       0.94      0.64      0.76       496
+
+    Whataboutism       0.23      0.71      0.34        73
+
+
+
+        accuracy                           0.65       569
+
+       macro avg       0.58      0.68      0.55       569
+
+    weighted avg       0.85      0.65      0.71       569
+
+
+
+                  precision    recall  f1-score   support
+
+Not Whataboutism       0.91      0.91      0.91      1299
+    Whataboutism       0.45      0.45      0.45       201
+
+        accuracy                           0.85      1500
+       macro avg       0.68      0.68      0.68      1500
+    weighted avg       0.85      0.85      0.85      1500
+
+0.44776119402985076
+
+Label Spreading Avg Accuracy: 67.34081346423561
+Label Spreading Avg F1: 27.039421372639513
+Label Spreading C&S Avg Accuracy: 68.54417952314165
+Label Spreading C&S Avg F1: 27.045974901963554
