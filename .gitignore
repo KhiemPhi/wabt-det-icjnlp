@@ -11,3 +11,4 @@ utils/__pycache__
 results/
 best_ckpts/
 lightning_logs/
+sem-eval/
