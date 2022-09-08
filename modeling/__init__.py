@@ -1,2 +1,2 @@
-from .model import ContextSentenceTransformer, SentenceTransformer
+from .model import ContextSentenceTransformer, SentenceTransformer, ContextSentenceTransformerMultiTask
 from .self_sup import SelfSupervisedContextSentenceTransformer

@@ -1,1 +1,1 @@
-from .dataset import WhataboutismDataset, WhataboutismDatasetUnlabeled
+from .dataset import WhataboutismDataset, WhataboutismDatasetUnlabeled, EmotionDataset

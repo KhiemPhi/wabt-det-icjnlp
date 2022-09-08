@@ -107,7 +107,7 @@ def CB_loss(labels, logits, samples_per_cls, no_of_classes, loss_type, beta, gam
        
         pt = labels_one_hot * p + (1 - labels_one_hot) * (1 - p)
         cb_loss = focal_loss(labels_one_hot, pt, weights, gamma)
-        cb_loss = cb_loss + 1.0 * torch.pow(1-pt, gamma+1)
+        cb_loss = cb_loss + 3.0 * torch.pow(1-pt, gamma+1)
         cb_loss = torch.mean(cb_loss)
         
     elif loss_type == "sigmoid":

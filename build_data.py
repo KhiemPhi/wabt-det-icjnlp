@@ -139,12 +139,15 @@ import statsmodels.stats.inter_rater as rater
 format_data, _ = rater.aggregate_raters(data)
 print(format_data)
 print(rater.fleiss_kappa(format_data))
+new_df["Anno-3"] = anno_3_labels
+new_df['Khiem'] = new_df["Khiem"].astype(int)
 
-new_df = new_df.drop('Noushin',1)
 new_df = new_df.drop('Banerjee',1)
-new_df = new_df.drop('Khiem',1)
-new_df = new_df.drop('Brett',1)
-new_df = new_df.drop('Likes',1)
-new_df = new_df.dropna()
 
+new_df = new_df.drop('Brett',1)
+
+new_df = new_df.reindex(columns=['Topic', 'Title', 'ID', 'Comments', 'Noushin', 'Khiem', 'Anno-3', 'Label', 'Likes'])
+
+
+breakpoint()
 new_df.to_csv('annotations_1645.csv', index=False)

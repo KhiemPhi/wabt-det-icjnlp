@@ -1,5 +1,5 @@
 # Experiment 0: Best Model Possible: Pairing with Most Similar Comment that Has A Different Label  Must be Topically Aware
-#python -u train.py --gpu 2 --batch 80  --learning_rate 1e-4 --epochs 10  -sn "context no augments poly focal loss determinstic pairing"  -c 
+#python -u train.py --gpu 1 --batch 40  --learning_rate 1e-4 --epochs 10  -sn "context no augments poly focal loss determinstic pairing"  -c 
 
 #Experiment 1: Effects of Loss Functions  
 python -u train.py --gpu 2 --batch 80  --learning_rate 1e-4 --epochs 10    -sn "context no augments cb loss"  -c  -l "softmax" 

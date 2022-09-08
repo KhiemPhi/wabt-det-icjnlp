@@ -1,9 +1,11 @@
 import argparse
 from builtins import breakpoint
 import os
+from unicodedata import numeric
 import warnings
 
 import numpy as np
+from modeling.model import ContextSentenceTransformerMultiTask
 import optuna
 import pandas as pd
 import torch
@@ -16,14 +18,18 @@ from modeling import ContextSentenceTransformer, SentenceTransformer, SelfSuperv
 from utils import load_comments, add_augmentation, train_test_split_helper
 from utils.utils import train_split_balance
 
+
+
+from datasets import load_dataset
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore")
 
 
+
 def load_data(args, file_path="./dataset/annotations_1500_sim_idx.csv", aug_path="./dataset/augment.csv", unlabel_testing=False):
+
     comments, labels, topics, titles, ids, _, sent_to_related, all_transcript_sents, df  = load_comments(file_path)  # load dataset w/ transcript
-   
-  
    
     queries = np.unique(df.index)
     non_wabt_count = []
@@ -73,7 +79,7 @@ def load_data(args, file_path="./dataset/annotations_1500_sim_idx.csv", aug_path
         test_comments, test_labels, test_topics, test_titles, test_ids, aug_to_idx_test = add_augmentation(test_comments, test_labels, test_topics, test_titles, test_ids, aug_path="./dataset/augment.csv",  dataframe=df)
 
     # Divide by 2 to get train_val
-    test_idx, val_idx = train_split_balance(test_comments, test_topics, test_labels, percentage=0.95)
+    test_idx, val_idx = train_split_balance(test_comments, test_topics, test_labels, percentage=0.5)
     train_set = WhataboutismDataset(train_comments, train_labels, train_topics, train_titles, train_ids, args.context,  df, False, train_idx_all, test_comments, aug_to_idx_train, args.random, args.agnostic, args.title)
     val_set =  WhataboutismDataset(test_comments[val_idx], test_labels[val_idx], test_topics[val_idx], test_titles[val_idx], test_ids[val_idx], args.context,  df, True, val_idx, test_comments,aug_to_idx_test, args.random, args.agnostic, args.title)
     test_set = WhataboutismDataset(test_comments[test_idx], test_labels[test_idx], test_topics[test_idx], test_titles[test_idx], test_ids[test_idx], args.context,  df, True, test_idx, test_comments,aug_to_idx_test, args.random, args.agnostic, args.title)   
@@ -104,9 +110,12 @@ def objective(trial: optuna.trial.Trial):
         mode="max",
     )
     if args.context:
-        model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.992, gamma=3.38,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
+        if args.mtl:
+            model = ContextSentenceTransformerMultiTask(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.85,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
+        else: 
+            model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99    , gamma=1.85,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
     else: 
-        model = SentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.992, gamma=3.38, class_num=2, context=args.context, loss=args.loss)
+        model = SentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.9, gamma=1.85, class_num=2, context=args.context, loss=args.loss)
     
     trainer = Trainer(devices=[int(args.gpu)] if torch.cuda.is_available() else 0,  accelerator="gpu",
                       max_epochs=args.epochs, auto_select_gpus=True, benchmark=True,        
@@ -115,6 +124,11 @@ def objective(trial: optuna.trial.Trial):
     #hyperparameters = dict(gamma=gamma, beta=beta)
     #trainer.logger.log_hyperparams(hyperparameters)
     trainer.fit(model)   
+
+    
+
+
+
     return trainer.callback_metrics["best-f1"].item()
 
 
@@ -228,6 +242,8 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--agnostic", action='store_true',
                         default=False, help="Whether to test using pre-trained models")
     parser.add_argument("-ti", "--title", action='store_true',
+                        default=False, help="Use title as context")
+    parser.add_argument("-mtl", "--mtl", action='store_true',
                         default=False, help="Use title as context")
  
  
