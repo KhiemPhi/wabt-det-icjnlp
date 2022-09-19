@@ -1,7 +1,6 @@
 import argparse
 from builtins import breakpoint
 import os
-from unicodedata import numeric
 import warnings
 
 import numpy as np
@@ -14,33 +13,17 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 
 from data import WhataboutismDataset, WhataboutismDatasetUnlabeled
-<<<<<<< HEAD
 from modeling import ContextSentenceTransformer, SentenceTransformer, SelfSupervisedContextSentenceTransformer, ProtoTransformer
 from utils import load_comments, add_augmentation, train_test_split_helper
 from utils.utils import train_split_balance
 
 
-
-from datasets import load_dataset
-
-=======
-from modeling import ContextSentenceTransformer, SentenceTransformer, SelfSupervisedContextSentenceTransformer
-from utils import load_comments, add_augmentation, train_test_split_helper, load_data_sem_eval
-from utils.utils import train_split_balance
-
-
->>>>>>> 75af89e36b1a1f6b05b60335d763d5cb285b119b
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore")
 
 
 
 def load_data(args, file_path="./dataset/annotations_1500_sim_idx.csv", aug_path="./dataset/augment.csv", unlabel_testing=False):
-
-<<<<<<< HEAD
-=======
-    load_data_sem_eval(file_path)
->>>>>>> 75af89e36b1a1f6b05b60335d763d5cb285b119b
     comments, labels, topics, titles, ids, _, sent_to_related, all_transcript_sents, df  = load_comments(file_path)  # load dataset w/ transcript
    
     queries = np.unique(df.index)
@@ -140,11 +123,6 @@ def objective(trial: optuna.trial.Trial):
     #hyperparameters = dict(gamma=gamma, beta=beta)
     #trainer.logger.log_hyperparams(hyperparameters)
     trainer.fit(model)   
-
-    
-
-
-
     return trainer.callback_metrics["best-f1"].item()
 
 
