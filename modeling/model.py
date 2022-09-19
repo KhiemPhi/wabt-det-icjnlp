@@ -191,6 +191,7 @@ class ContextSentenceTransformer(pl.LightningModule):
                         sim_label = torch.Tensor([0]).to(labels.device)  #If the label == 0, then the distance between the embeddings is increased
 
                     if train: 
+                        breakpoint()
                         distances = 1 - cosine_score
                         losses = 0.5 * (sim_label.float() * distances.pow(2) + (1 - sim_label).float() * F.relu(   0.2 - distances).pow(2))
                         distance_loss.append(losses)
@@ -212,6 +213,8 @@ class ContextSentenceTransformer(pl.LightningModule):
                 all_logits.append(inherit_labels)             
                 labels_confidence, labels_idx = torch.max(  inherit_labels.squeeze(1), dim=1)
                 
+                if self.best_f1 > 40.0 and context_labels[:, idx][torch.argmax(torch.hstack(scores)).item()].item() != labels[idx] and labels[idx] == 1:
+                    breakpoint()
             
                 final_label.append(  context_labels[:, idx][torch.argmax(torch.hstack(scores)).item()].item()  )
                 
@@ -247,9 +250,6 @@ class ContextSentenceTransformer(pl.LightningModule):
         whataboutism_logits, aux_logits, new_labels, sim_loss = self.inference(batch)  
      
 
-      
-        new_labels = torch.LongTensor(labels).to(labels.device)
-        
         labels_occurence = list(np.bincount(labels.cpu().numpy().astype('int64')))  
         
         total_loss = self.calculate_loss(whataboutism_logits, labels, labels_occurence)

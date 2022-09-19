@@ -54,58 +54,60 @@ class WhataboutismDataset(Dataset):
         self.neg_counts = len( np.where(labels==0)[0] )
 
         self.context = context
+        self.num_context = 6
         
-      
+        self.random = random
+        self.title = title
         self.df = df 
     
         
         self.test = test
         self.idx = idx
         self.context_comments = []
-   
+       
+     
         if self.context:
-            self.aug_to_idx = aug_to_idx
-            
+            self.aug_to_idx = aug_to_idx            
             self.test_comments=test_comments
+            _, test_idx , _ = np.intersect1d(self.df["Comments"], self.test_comments, return_indices=True)
             self.comments_to_idx = {}
             self.comments_to_context_label = {}
             
             for idx, comment in enumerate(tqdm.tqdm(self.comments)):            
                 sim_idx = eval(self.df.iloc[idx]["Index"]) # get sim idx for top
-                topic = self.topics[idx]
+                
                 if len(sim_idx) == 0:
                     sim_idx = eval(self.aug_to_idx[comment])
 
-                sim_idx_intersect = []
-                sim_label_intersect = []
-                topic_at_idx = self.df.iloc[sim_idx].index.values
-                label_at_idx = self.df.iloc[sim_idx]["Label"].values
+                
+                # sim_label_intersect = []
+                # topic_at_idx = self.df.iloc[sim_idx].index.values
+                # label_at_idx = self.df.iloc[sim_idx]["Label"].values
                 
                 
-                for i, topic_idx, label_idx in zip(sim_idx, topic_at_idx, label_at_idx): 
-                    if self.df.iloc[i]["Comments"] not in self.test_comments  :
-                        sim_idx_intersect.append(i)
-                        sim_label_intersect.append(label_idx)
+                
+                sim_idx_train = np.setdiff1d(sim_idx, test_idx)
+                
+                
                 
                 if self.test:
-                    zero_index = np.where( self.df.iloc[sim_idx_intersect]["Label"] == 0 )[0][0:5]
-                    one_index = np.where( self.df.iloc[sim_idx_intersect]["Label"] == 1 )[0][0:5]
-                    self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_intersect]["Comments"].values[zero_index], self.df.iloc[sim_idx_intersect]["Comments"].values[one_index]))
-                    self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_intersect]["Label"].values[zero_index], self.df.iloc[sim_idx_intersect]["Label"].values[one_index]))
-                    self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_intersect]["Comments"].values[zero_index], self.df.iloc[sim_idx_intersect]["Comments"].values[one_index])) )
+                    zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0][0:(self.num_context // 2)]
+                    one_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0][0:(self.num_context // 2)]
+                    self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index]))
+                    self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Label"].values[zero_index], self.df.iloc[sim_idx_train]["Label"].values[one_index]))
+                    self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index])) )
                 else: 
-                    zero_index = np.where( self.df.iloc[sim_idx_intersect]["Label"] == 0 )[0][0:3]
-                    one_index = np.where( self.df.iloc[sim_idx_intersect]["Label"] == 1 )[0][0:3]
-                    self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_intersect]["Comments"].values[zero_index], self.df.iloc[sim_idx_intersect]["Comments"].values[one_index]))
-                    self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_intersect]["Label"].values[zero_index], self.df.iloc[sim_idx_intersect]["Label"].values[one_index]))
-                    self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_intersect]["Comments"].values[zero_index], self.df.iloc[sim_idx_intersect]["Comments"].values[one_index])) )
+                    zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0][0:(self.num_context // 2)]
+                    one_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0][0:(self.num_context // 2)]
+                    self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index]))
+                    self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Label"].values[zero_index], self.df.iloc[sim_idx_train]["Label"].values[one_index]))
+                    self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index])) )
             
             self.select_indices = np.zeros_like(self.titles)
           
             intersect = len(np.intersect1d(self.context_comments, self.test_comments))
             print(intersect)
-        self.random = random
-        self.title = title
+        
   
     def __getitem__(self, idx:int):
 
@@ -125,8 +127,8 @@ class WhataboutismDataset(Dataset):
                 context_label = list(self.comments_to_context_label[comment]       )     
             else: 
                 
-                context=  list(context_comments[0:6]) # need to deterministically generate better context, maybe use current embeddings instead for paraings
-                context_label = list(self.comments_to_context_label[comment][0:6]       )     
+                context=  list(context_comments[0:self.num_context]) # need to deterministically generate better context, maybe use current embeddings instead for paraings
+                context_label = list(self.comments_to_context_label[comment][0:self.num_context]       )     
             
             if not self.title:
                 return comment, label, context, context_label
