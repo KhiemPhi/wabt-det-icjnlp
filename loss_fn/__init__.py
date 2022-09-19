@@ -1,1 +1,1 @@
-from .loss import CB_loss
+from .loss import CB_loss, PrototypeCELoss

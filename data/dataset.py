@@ -83,18 +83,9 @@ class WhataboutismDataset(Dataset):
                 
                 
                 for i, topic_idx, label_idx in zip(sim_idx, topic_at_idx, label_at_idx): 
-                    if i in self.idx  :  
-                        ratio = i / len(sim_idx)
-                        if agnostic:
-                            if label_idx != self.labels[idx] and ratio <= 0.4 and topic_idx != topic: # MOST SIMILAR COMMENT WITH A DIFFERENT LABEL, HARD-EXAMPLE MINER  
-                                sim_idx_intersect.append(i)       
-                        else:
-                            if label_idx != self.labels[idx] and not self.test  : 
-                                sim_idx_intersect.append(i)
-                                sim_label_intersect.append(label_idx)
-                            elif  self.df.iloc[i]["Comments"] not in self.test_comments  :
-                                sim_idx_intersect.append(i)
-                                sim_label_intersect.append(label_idx)
+                    if self.df.iloc[i]["Comments"] not in self.test_comments  :
+                        sim_idx_intersect.append(i)
+                        sim_label_intersect.append(label_idx)
                 
                 if self.test:
                     zero_index = np.where( self.df.iloc[sim_idx_intersect]["Label"] == 0 )[0][0:5]
@@ -103,8 +94,11 @@ class WhataboutismDataset(Dataset):
                     self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_intersect]["Label"].values[zero_index], self.df.iloc[sim_idx_intersect]["Label"].values[one_index]))
                     self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_intersect]["Comments"].values[zero_index], self.df.iloc[sim_idx_intersect]["Comments"].values[one_index])) )
                 else: 
-                    self.comments_to_idx[comment] = self.df.iloc[sim_idx_intersect]["Comments"].values
-                    self.comments_to_context_label[comment] = self.df.iloc[sim_idx_intersect]["Label"].values
+                    zero_index = np.where( self.df.iloc[sim_idx_intersect]["Label"] == 0 )[0][0:3]
+                    one_index = np.where( self.df.iloc[sim_idx_intersect]["Label"] == 1 )[0][0:3]
+                    self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_intersect]["Comments"].values[zero_index], self.df.iloc[sim_idx_intersect]["Comments"].values[one_index]))
+                    self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_intersect]["Label"].values[zero_index], self.df.iloc[sim_idx_intersect]["Label"].values[one_index]))
+                    self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_intersect]["Comments"].values[zero_index], self.df.iloc[sim_idx_intersect]["Comments"].values[one_index])) )
             
             self.select_indices = np.zeros_like(self.titles)
           

@@ -1,12 +1,13 @@
 from builtins import breakpoint
 from random import shuffle
+from typing import final
 import pytorch_lightning as pl 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
 from torch.utils.data import DataLoader
-from loss_fn import CB_loss
+from loss_fn import CB_loss, PrototypeCELoss
 from utils import scatter_tSNE
 import csv
 
@@ -20,6 +21,9 @@ from data import EmotionDataset
 from pytorch_lightning.trainer.supporters import CombinedLoader
 from timm.models.layers import trunc_normal_
 
+from .proto import ProjectionHead, l2_normalize, momentum_update, distributed_sinkhorn
+
+from einops import rearrange, repeat
 
 class ContextSentenceTransformer(pl.LightningModule):
 
@@ -44,6 +48,7 @@ class ContextSentenceTransformer(pl.LightningModule):
         self.class_num = class_num
         
         self.similarity = nn.CosineSimilarity(dim=1, eps=1e-6)
+       
         self.similarity_preds = []
 
         self.context = context 
@@ -151,90 +156,78 @@ class ContextSentenceTransformer(pl.LightningModule):
             
             aux_logits = self.aux_classifier(comment_embs)
             #2. We train a 2nd Objective: The Similarity Objective
-            if not train:
-
-                aux_labels = torch.argmax(aux_logits, dim=1).flatten()
-              
-                context_embs = []
-                final_sim_scores = []
-              
-                context_comment = np.vstack(context_comment)
-                
-                context_labels = torch.vstack(context_labels)
-                final_label = []
-                
-                for idx, comment_emb in enumerate(comment_embs): 
-                    comment_emb = comment_emb.unsqueeze(0)
-
-                    scores = []
-                    lowest_cosine_score = -1.0
-                    most_diff_emb = None
-                    inherit_labels = []
-                    
-                    for compare_comment, compare_label in zip(context_comment[:, idx], context_labels[:, idx]): 
-                        compare_comment_emb  = self.get_embs([compare_comment], labels)
-                        cosine_score = self.similarity(comment_emb, compare_comment_emb)
-                        combine_comment_context_embs = torch.hstack((comment_emb, compare_comment_emb))
-                        whataboutism_logits = self.classifier(combine_comment_context_embs)
-                        inherit_labels.append(whataboutism_logits)
-                        
-                        
-                        if cosine_score.item() >= lowest_cosine_score: # most similar with different label 
-                            most_diff_emb = compare_comment_emb
-                            lowest_cosine_score = cosine_score.item()
-                        scores.append(cosine_score)
-                      
-                    
-                    inherit_labels = torch.stack(inherit_labels).squeeze(1)
-                    final_label.append( torch.mode(torch.argmax(inherit_labels.squeeze(1), dim=1))[0] )
-                    
-                    context_embs.append(most_diff_emb)
-                    final_sim_scores.append(torch.hstack(scores)) # punish this score???
-                
-                context_embs = torch.stack(context_embs).squeeze(1)
-            else:
-
-                context_embs = []
-                final_sim_scores = []
-              
-                context_comment = np.vstack(context_comment)
-                
-                context_labels = torch.vstack(context_labels)
-                
-                
-                for idx, comment_emb in enumerate(comment_embs): 
-                    comment_emb = comment_emb.unsqueeze(0)
-
-                    scores = []
-                    lowest_cosine_score = -1.0 
-                    most_diff_emb = None
-                    
-                    for compare_comment, compare_label in zip(context_comment[:, idx], context_labels[:, idx]): 
-                        compare_comment_emb  = self.get_embs([compare_comment], labels)
-                        cosine_score = self.similarity(comment_emb, compare_comment_emb)
-                        if cosine_score.item() >= lowest_cosine_score: # most similar with different label 
-                            most_diff_emb = compare_comment_emb
-                            lowest_cosine_score = cosine_score.item()
-                            self.avg_sim_scores.append(lowest_cosine_score) 
-                        
-                        scores.append(cosine_score)
-                        
-                    context_embs.append(most_diff_emb)
-                    final_sim_scores.append(torch.hstack(scores)) # punish this score???
-                
-                context_embs = torch.stack(context_embs).squeeze(1)
-                
-
+           
+            aux_labels = torch.argmax(aux_logits, dim=1).flatten()
             
-            combine_comment_context_embs = torch.hstack((comment_embs, context_embs ))
+            context_embs = []
+            final_sim_scores = []
             
-        whataboutism_logits = self.classifier(combine_comment_context_embs)
+            context_comment = np.vstack(context_comment)
+            
+            context_labels = torch.vstack(context_labels)
+            final_label = []
+
+            all_logits = []
+            train_labels = []
+            distance_loss = []
+            
+            for idx, comment_emb in enumerate(comment_embs): 
+                comment_emb = comment_emb.unsqueeze(0)
+
+                scores = []
+                highest_cosine_score = -1.0
+                most_same_emb = None
+                inherit_labels = []
+               
+                
+                for compare_comment, compare_label in zip(context_comment[:, idx], context_labels[:, idx]): 
+                    compare_comment_emb  = self.get_embs([compare_comment], labels)
+                    
+                    cosine_score = self.similarity(comment_emb, compare_comment_emb)
+                   
+                    if compare_label == labels[idx]:
+                        sim_label = torch.Tensor([1]).to(labels.device)
+                    else: 
+                        sim_label = torch.Tensor([0]).to(labels.device)  #If the label == 0, then the distance between the embeddings is increased
+
+                    if train: 
+                        distances = 1 - cosine_score
+                        losses = 0.5 * (sim_label.float() * distances.pow(2) + (1 - sim_label).float() * F.relu(   0.2 - distances).pow(2))
+                        distance_loss.append(losses)
+                       
+                    
+                    classifier_embs = torch.hstack((comment_emb, compare_comment_emb))                    
+                    whataboutism_logits = self.classifier(classifier_embs )
+                    
+                    inherit_labels.append(whataboutism_logits)
+
+                    train_labels.append(labels[idx])
+                    
+                    if cosine_score.item() >= highest_cosine_score: # most similar with different label 
+                        most_same_emb = compare_comment_emb
+                        highest_cosine_score = cosine_score.item()
+                    scores.append(cosine_score)
+               
+                inherit_labels = torch.stack(inherit_labels).squeeze(1)  
+                all_logits.append(inherit_labels)             
+                labels_confidence, labels_idx = torch.max(  inherit_labels.squeeze(1), dim=1)
+                
+            
+                final_label.append(  context_labels[:, idx][torch.argmax(torch.hstack(scores)).item()].item()  )
+                
+                context_embs.append(most_same_emb)
+                final_sim_scores.append(torch.hstack(scores)) # punish this score???
+            
+            context_embs = torch.stack(context_embs).squeeze(1)
+            classifier_embs = torch.hstack((comment_embs, context_embs ))
+            
+        whataboutism_logits = self.classifier(classifier_embs)
         
       
         if train:
-            return whataboutism_logits, aux_logits
+            return whataboutism_logits, aux_logits, train_labels, torch.stack(distance_loss).mean()
         else: 
-            return whataboutism_logits, aux_logits, context_embs, torch.stack(final_sim_scores), torch.hstack(final_label)
+            return whataboutism_logits, aux_logits, context_embs, torch.stack(final_sim_scores), final_label
 
     def calculate_loss(self, whataboutism_logits, labels, labels_occurence):
         if self.loss == "softmax" or self.loss == "focal":
@@ -251,12 +244,17 @@ class ContextSentenceTransformer(pl.LightningModule):
         # one comment can have one of five contexts
         
         
-        whataboutism_logits, aux_logits = self.inference(batch)  
-        
-        labels_occurence = list(np.bincount(labels.cpu().numpy()))        
-        total_loss = self.calculate_loss(whataboutism_logits, labels, labels_occurence)
+        whataboutism_logits, aux_logits, new_labels, sim_loss = self.inference(batch)  
+     
+
       
-        return total_loss
+        new_labels = torch.LongTensor(labels).to(labels.device)
+        
+        labels_occurence = list(np.bincount(labels.cpu().numpy().astype('int64')))  
+        
+        total_loss = self.calculate_loss(whataboutism_logits, labels, labels_occurence)
+       
+        return  sim_loss + total_loss
     
     def on_train_epoch_end(self):
         
@@ -279,40 +277,24 @@ class ContextSentenceTransformer(pl.LightningModule):
     def validation_step(self,  batch: dict, _batch_idx: int):
         
         comments_train, labels_train, opp_comment_train, context_labels_train = batch['train']  
-        comments_test, labels_test, opp_comment_test, context_labels_test = batch['test']   
+        comments_test, labels_test, opp_comment_test, context_labels_test = batch['test'] 
       
-        
-        
-        
-        whataboutism_logits_test, aux_logits, context_embs, final_sim_scores, final_sim_labels = self.inference(batch["test"], train=False)  
+        whataboutism_logits_test, aux_logits, context_embs, final_sim_scores, final_sim_labels_test = self.inference(batch["test"], train=False)  
+        whataboutism_logits_train, aux_logits, context_embs_train, final_sim_scores, final_sim_labels_train = self.inference(batch["test"], train=False)  
        
-        preds_test = torch.argmax(whataboutism_logits_test, dim=1).flatten()
-        probs_test = torch.softmax(whataboutism_logits_test, dim=1)[:, 1]
-
-        context_labels_test_fix = torch.vstack(context_labels_test).T
         
-        inherit_labels = torch.argmax((final_sim_scores), dim=1)
-        sim_labels_test = context_labels_test_fix.gather(1, inherit_labels.view(-1,1)).flatten()
-        aux_preds_test =  torch.argmax(aux_logits, dim=1)
-
-        whataboutism_logits_train, aux_logits_train = self.inference(batch["train"], train=True)  
-        preds_train = torch.argmax(whataboutism_logits_train, dim=1).flatten()
-        
-        
-        self.val_preds.extend(preds_test.cpu().tolist())
+        self.val_preds.extend(final_sim_labels_test)
         self.val_labels.extend(labels_test.cpu().tolist())        
         self.val_embs.extend(context_embs.cpu().tolist())
         self.val_comments.extend(comments_test)
-        self.val_probs.extend(probs_test.cpu().tolist())
+        self.val_probs.extend(final_sim_labels_test)
 
-        self.train_preds.extend(preds_train.cpu().tolist())
-        self.train_labels.extend(labels_train.cpu().tolist())  
-    
+        
     def on_validation_epoch_end(self):
         self.val_accuracy = accuracy_score(self.val_labels, self.val_preds)*100
         self.val_f1 = f1_score(self.val_labels, self.val_preds)*100
 
-        self.train_f1 = f1_score(self.train_labels, self.train_preds)*100
+        #self.train_f1 = f1_score(self.train_labels, self.train_preds)*100
         
         if self.val_f1 > self.best_f1: 
 
@@ -340,7 +322,7 @@ class ContextSentenceTransformer(pl.LightningModule):
 
         self.log("validation-acc", torch.tensor([self.val_accuracy]), prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
         self.log("validation-f1", self.val_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
-        self.log("train-f1", self.train_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
+        #self.log("train-f1", self.train_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
         self.log("best-f1", self.best_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
 
 
@@ -868,26 +850,195 @@ class ProtoTransformer(ContextSentenceTransformer):
     def __init__(self, train_set, test_set, val_set, learning_rate=0.1, batch_size=8, beta=0.99, gamma=2.5, class_num=2, context=True, loss="focal", cross=False, unlabel_set=None, num_prototype=5):
         super().__init__(train_set, test_set, val_set, learning_rate, batch_size, beta, gamma, class_num, context, loss, cross, unlabel_set)
 
+         
+       
         # Now I add prototypes 
         self.num_prototype = num_prototype
-        self.embedding_dim = 384 # embedding size of Sentence-BERT
+        self.embedding_dim = 768 # embedding size of Sentence-BERT
         self.num_classes = 2
+        self.loss = PrototypeCELoss(self.beta, self.num_classes)
 
         self.prototypes =  nn.Parameter(torch.zeros(self.num_classes, self.num_prototype, self.embedding_dim),
                                        requires_grad=True)
         self.cls_head = nn.Sequential(
-            nn.Conv1d(self.embedding_dim, self.embedding_dim,  kernel_size=3, stride=1, padding=1), 
+            nn.Linear(self.embedding_dim, self.embedding_dim), 
             nn.ReLU(),
             nn.Dropout(0.1)
         )
 
         self.feat_norm = nn.LayerNorm(self.embedding_dim)
         self.class_norm = nn.LayerNorm(self.num_classes)
+        self.proj_head = ProjectionHead(self.embedding_dim, self.embedding_dim)
         
         trunc_normal_(self.prototypes, std=0.02)
     
+    def prototype_learning(self, embs, out_logits, labels, masks):
+        pred_seg = torch.max(out_logits, 1)[1]
+        mask = (labels == pred_seg.view(-1))
+
+        cosine_similarity = torch.mm(embs, self.prototypes.view(-1, self.prototypes.shape[-1]).t())
+
+        proto_logits = cosine_similarity
+        proto_target = labels.clone().float()
+        protos = self.prototypes.data.clone()
+
+        for k in range(self.num_classes):
+            init_q = masks[..., k]
+            init_q = init_q[labels == k, ...]
+            if init_q.shape[0] == 0:
+                continue
+
+            q, indexs = distributed_sinkhorn(init_q)
+
+            m_k = mask[labels == k]
+
+            c_k = embs[labels == k, ...]
+
+            m_k_tile = repeat(m_k, 'n -> n tile', tile=self.num_prototype)
+
+            m_q = q * m_k_tile  # n x self.num_prototype
+
+            c_k_tile = repeat(m_k, 'n -> n tile', tile=c_k.shape[-1])
+
+            c_q = c_k * c_k_tile  # n x embedding_dim
+
+            f = m_q.transpose(0, 1) @ c_q  # self.num_prototype x embedding_dim
+
+            n = torch.sum(m_q, dim=0)
+
+            if torch.sum(n) > 0:
+                f = F.normalize(f, p=2, dim=-1)
+
+                new_value = momentum_update(old_value=protos[k, n != 0, :], new_value=f[n != 0, :],
+                                            momentum=self.gamma, debug=False)
+                protos[k, n != 0, :] = new_value
+
+            proto_target[labels == k] = indexs.float() + (self.num_prototype * k)
+
+        self.prototypes = nn.Parameter(l2_normalize(protos),
+                                       requires_grad=True)
+
+        
+        return proto_logits, proto_target
+
+
     def inference(self, whatabout, train=True):
 
         comments, labels, context_comment, context_labels = whatabout
+        context_comment = np.vstack(context_comment)
+                
+        context_labels = torch.vstack(context_labels)
         
         comment_embs = self.get_embs(comments, labels)
+        
+       
+        context_embs = []
+        for idx, comment_emb in enumerate(comment_embs): 
+                comment_emb = comment_emb.unsqueeze(0)
+
+                scores = []
+                lowest_cosine_score = -1.0 
+                most_diff_emb = None
+                
+                for compare_comment, compare_label in zip(context_comment[:, idx], context_labels[:, idx]): 
+                    compare_comment_emb  = self.get_embs([compare_comment], labels)
+                    cosine_score = self.similarity(comment_emb, compare_comment_emb)
+                    if cosine_score.item() >= lowest_cosine_score: # most similar with different label 
+                        most_diff_emb = compare_comment_emb
+                        lowest_cosine_score = cosine_score.item()
+                        self.avg_sim_scores.append(lowest_cosine_score) 
+                    
+                    scores.append(cosine_score)
+                    
+                context_embs.append(most_diff_emb)
+               
+        context_embs = torch.stack(context_embs).squeeze(1)
+        aug_comment_embs = torch.hstack((comment_embs, context_embs))
+                  
+
+        comment_embs = self.cls_head(aug_comment_embs)
+        comment_embs = self.proj_head(comment_embs)
+        comment_embs = self.feat_norm(comment_embs)
+        comment_embs = l2_normalize(comment_embs)
+      
+        masks = torch.einsum('nd,kmd->nmk', comment_embs, self.prototypes)
+        out_logits = torch.amax(masks, dim=1) 
+        
+
+        self.prototypes.data.copy_(l2_normalize(self.prototypes))
+      
+    
+        out_logits = self.class_norm(out_logits)  # this is the output logits
+        out_probs = torch.softmax(out_logits, dim=1) # this is the output probs
+        out_preds = torch.argmax(out_logits, dim=1)
+        
+        # now we do prototype learning         
+        proto_logits, proto_target = self.prototype_learning(comment_embs, out_logits, labels, masks)
+        
+        return out_preds, out_logits, proto_logits, proto_target, out_probs
+
+    def training_step(self, batch: dict, _batch_idx: int):        
+        comments, labels, opp_comment, context_labels = batch     
+        # one comment can have one of five contexts        
+        
+        out_preds, out_logits, proto_logits, proto_target, _ = self.inference(batch)  
+        
+        labels_occurence = list(np.bincount(labels.cpu().numpy()))        
+        preds = { "pred_logits": out_logits, "logits": proto_logits, "target": proto_target }
+        loss =  self.loss(preds, labels, labels_occurence)
+      
+        return loss
+    
+    def validation_step(self,  batch: dict, _batch_idx: int):
+        
+        comments_train, labels_train, opp_comment_train, context_labels_train = batch['train']  
+        comments_test, labels_test, opp_comment_test, context_labels_test = batch['test']           
+        preds_test, out_logits, proto_logits, proto_target, probs_test = self.inference(batch["test"], train=False)  
+        
+        
+        self.val_preds.extend(preds_test.cpu().tolist())
+        self.val_labels.extend(labels_test.cpu().tolist())       
+        self.val_comments.extend(comments_test)
+        self.val_probs.extend(probs_test.cpu().tolist())
+
+      
+    
+    def on_validation_epoch_end(self):
+        self.val_accuracy = accuracy_score(self.val_labels, self.val_preds)*100
+        self.val_f1 = f1_score(self.val_labels, self.val_preds)*100
+        
+        if self.val_f1 >= self.best_f1: 
+
+            self.csv_record = open('vis/validation_results_1615.csv', 'w')
+            self.writer = csv.writer(self.csv_record)
+            self.best_epoch = self.epochs
+
+            report = classification_report(self.val_labels, self.val_preds, target_names=["Non-Whataboutism", "Whataboutism"])
+          
+            with open('{}.txt'.format('vis/validation_acc_tab'), 'w') as f:
+                print(report, file=f)
+        
+            self.best_f1 = self.val_f1
+            self.val_embs = np.array(self.val_embs)
+
+            # Visualise the results when best is beaten
+            # path = "vis/tSNE/test-tSNE-epoch-" + str(self.epochs) + ".jpg"
+            # scatter_tSNE(self.val_embs, np.array(self.val_labels), file_path= path )
+
+            # Visualize the wrong results
+            wrong_comments = []
+            self.writer.writerow(["Comment", "Label", "Predicted (0=Non-Wabt, 1=Wabt)", "Whataboutism Probability", "Error Type"])
+            for test_comment, test_label, test_pred, test_prob in zip(self.val_comments, self.val_labels, self.val_preds, self.val_probs):                        
+                if test_label == 1 and test_pred == 0:
+                    self.writer.writerow([test_comment, test_label, test_pred, test_prob,  "False Neg"])
+                    wrong_comments.append(test_comment)
+                elif test_label == 0 and test_pred == 1:
+                    self.writer.writerow([test_comment, test_label, test_pred, test_prob,  "False Pos"])
+                    wrong_comments.append(test_comment)
+
+
+
+        self.log("validation-acc", torch.tensor([self.val_accuracy]), prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
+        self.log("validation-f1", self.val_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
+        self.log("best-f1", self.best_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
+        self.log("best-epoch", self.best_epoch, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)

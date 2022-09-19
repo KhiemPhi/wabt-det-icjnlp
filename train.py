@@ -14,7 +14,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 
 from data import WhataboutismDataset, WhataboutismDatasetUnlabeled
-from modeling import ContextSentenceTransformer, SentenceTransformer, SelfSupervisedContextSentenceTransformer
+from modeling import ContextSentenceTransformer, SentenceTransformer, SelfSupervisedContextSentenceTransformer, ProtoTransformer
 from utils import load_comments, add_augmentation, train_test_split_helper
 from utils.utils import train_split_balance
 
@@ -112,8 +112,12 @@ def objective(trial: optuna.trial.Trial):
     if args.context:
         if args.mtl:
             model = ContextSentenceTransformerMultiTask(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.85,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
+        elif args.pro: 
+            model = ProtoTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.5,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
         else: 
             model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99    , gamma=1.85,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
+    
+    
     else: 
         model = SentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.9, gamma=1.85, class_num=2, context=args.context, loss=args.loss)
     
@@ -244,7 +248,9 @@ if __name__ == "__main__":
     parser.add_argument("-ti", "--title", action='store_true',
                         default=False, help="Use title as context")
     parser.add_argument("-mtl", "--mtl", action='store_true',
-                        default=False, help="Use title as context")
+                        default=False, help="multi-task learning")
+    parser.add_argument("-pr", "--pro", action='store_true',
+                        default=False, help="prototype learning")
  
  
     args = parser.parse_args()

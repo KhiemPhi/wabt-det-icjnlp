@@ -6,6 +6,69 @@ import numpy as np
 from typing import Union
 
 
+class PPC(nn.Module):
+    def __init__(self):
+        super(PPC, self).__init__()
+
+        self.ignore_label = -1
+       
+    def forward(self, contrast_logits, contrast_target):
+        loss_ppc = F.cross_entropy(contrast_logits, contrast_target.long(), ignore_index=self.ignore_label)
+
+        return loss_ppc
+
+
+class PPD(nn.Module):
+    def __init__(self):
+        super(PPD, self).__init__()
+
+        self.ignore_label = -1
+       
+
+    def forward(self, contrast_logits, contrast_target):
+        contrast_logits = contrast_logits[contrast_target != self.ignore_label, :]
+        contrast_target = contrast_target[contrast_target != self.ignore_label]
+
+        logits = torch.gather(contrast_logits, 1, contrast_target[:, None].long())
+        loss_ppd = (1 - logits).pow(2).mean()
+
+        return loss_ppd
+
+
+
+class PrototypeCELoss(nn.Module):
+    def __init__(self, beta, no_of_classes):
+        super(PrototypeCELoss, self).__init__()
+
+        self.ignore_index = -1
+       
+        self.loss_ppc_weight = 0.01
+        self.loss_ppd_weight = 0.001
+
+        self.beta = 0.9
+        self.gamma = 1.5
+        self.loss_type = "softmax"
+        self.no_of_classes = no_of_classes
+
+        self.ppc_criterion = PPC()
+        self.ppd_criterion = PPD()
+
+    def forward(self, preds, labels, labels_occurence):
+        
+        pred_logits = preds['pred_logits']        
+        contrast_logits = preds['logits']
+        contrast_target = preds['target']
+        
+        loss_ppc = self.ppc_criterion(contrast_logits, contrast_target)
+        loss_ppd = self.ppd_criterion(contrast_logits, contrast_target)
+
+        loss = CB_loss(labels, pred_logits, labels_occurence, self.no_of_classes, self.loss_type, self.beta, self.gamma, pred_logits.device, p=0.8, q=5, eps=1e-2)
+
+        return loss + self.loss_ppc_weight * loss_ppc + self.loss_ppd_weight * loss_ppd
+
+
+
+
 def focal_loss(labels, logits, alpha, gamma):
     """Compute the focal loss between `logits` and the ground truth `labels`.
     Focal loss = -alpha_t * (1-pt)^gamma * log(pt)
