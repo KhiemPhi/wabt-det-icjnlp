@@ -18,12 +18,13 @@ from utils import load_comments, add_augmentation, train_test_split_helper
 from utils.utils import train_split_balance
 
 
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore")
 
 
 
-def load_data(args, file_path="./dataset/annotations_1500_sim_idx.csv", aug_path="./dataset/augment.csv", unlabel_testing=False):
+def load_data(args, file_path="./dataset/annotations_986.csv", aug_path="./dataset/augment.csv", unlabel_testing=False):
     comments, labels, topics, titles, ids, _, sent_to_related, all_transcript_sents, df  = load_comments(file_path)  # load dataset w/ transcript
    
     queries = np.unique(df.index)
@@ -110,7 +111,7 @@ def objective(trial: optuna.trial.Trial):
         elif args.pro: 
             model = ProtoTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.5,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
         else: 
-            model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99    , gamma=1.85,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
+            model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.9    , gamma=3.38,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
     
     
     else: 
@@ -122,6 +123,7 @@ def objective(trial: optuna.trial.Trial):
    
     #hyperparameters = dict(gamma=gamma, beta=beta)
     #trainer.logger.log_hyperparams(hyperparameters)
+    #trainer.tune(model)
     trainer.fit(model)   
     return trainer.callback_metrics["best-f1"].item()
 

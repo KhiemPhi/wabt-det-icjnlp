@@ -1,5 +1,6 @@
 from builtins import breakpoint
 from random import shuffle
+from turtle import onclick
 from typing import final
 import pytorch_lightning as pl 
 import torch
@@ -47,7 +48,8 @@ class ContextSentenceTransformer(pl.LightningModule):
         self.gamma = gamma
         self.class_num = class_num
         
-        self.similarity = nn.CosineSimilarity(dim=1, eps=1e-6)
+        self.ones_prototypes = []
+        self.cross_entropy = nn.CrossEntropyLoss()
        
         self.similarity_preds = []
 
@@ -57,13 +59,10 @@ class ContextSentenceTransformer(pl.LightningModule):
         if self.cross:
             self.classifier = nn.Linear(384, 2) 
         else: 
-            self.classifier = nn.Linear(768, 2) 
-            self.aux_classifier = nn.Linear(384, 2)
-
-        self.cross_entropy = nn.CrossEntropyLoss()
-      
-        self.regression_loss = nn.L1Loss()
+            self.classifier = nn.Linear(768, 2)           
+     
         self.loss = loss
+        self.margin = 5
         
     
     def label_miner(self, context_candidates, candidates_labels):
@@ -89,9 +88,9 @@ class ContextSentenceTransformer(pl.LightningModule):
         """
         train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False)
         test_loader = DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False)
-        loaders = {"train": train_loader, "test": test_loader}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
+        # loaders = {"train": train_loader, "test": test_loader}
+        # combined_loaders = CombinedLoader(loaders, "max_size_cycle")
+        return test_loader
     
     def val_dataloader(self):
         """
@@ -103,9 +102,9 @@ class ContextSentenceTransformer(pl.LightningModule):
         """
         train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False)
         test_loader = DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False)
-        loaders = {"train": train_loader, "test": test_loader}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
+        # loaders = {"train": train_loader, "test": test_loader}
+        # combined_loaders = CombinedLoader(loaders, "max_size_cycle")
+        return test_loader
     
     def configure_optimizers(self):   
         """
@@ -114,7 +113,7 @@ class ContextSentenceTransformer(pl.LightningModule):
                 (2) Scheduler: Step-wise LR
         """     
         params =  self.parameters()
-        opt =  torch.optim.Adam(params, lr=self.learning_rate, weight_decay=1e-3)
+        opt =  torch.optim.Adam(params, lr=self.learning_rate, weight_decay=1e-2)
         sch = torch.optim.lr_scheduler.StepLR(opt, step_size=50, gamma=0.1)
         
         return [opt], [sch]
@@ -127,24 +126,35 @@ class ContextSentenceTransformer(pl.LightningModule):
                 inputs[key] = inputs[key].to(device)
            
         
-        return inputs
+        return inputs   
     
+    def max_pooling(self, model_output, attention_mask):
+        token_embeddings = model_output[0] #First element of model_output contains all token embeddings
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        token_embeddings[input_mask_expanded == 0] = -1e9  # Set padding tokens to large negative value
+        return torch.max(token_embeddings, 1)[0]
+    
+    def mean_pooling(self, model_output, attention_mask):
+        token_embeddings = model_output[0] #First element of model_output contains all token embeddings
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
     def get_embs(self, comments, labels):
         comment_tokens = self.get_comment_tokens(comments, labels.device)
         comment_embs = self.sent_transformer(**comment_tokens)
-        comment_embs = comment_embs["pooler_output"]
-        return comment_embs
+        sentence_embeddings = self.mean_pooling(comment_embs, comment_tokens['attention_mask'])
+        
+        return sentence_embeddings
     
     def inference(self, whatabout, train=True):
         
         comments, labels, context_comment, context_labels = whatabout
-        
-
+       
         final_sim_scores = []
         final_gt_scores = []
         context_embs = []
 
-
+        
         if self.cross:
            
             cross_enc = list(zip(comments, context_comment))
@@ -154,83 +164,78 @@ class ContextSentenceTransformer(pl.LightningModule):
             # 1. Push Comment
             comment_embs = self.get_embs(comments, labels)
             
-            aux_logits = self.aux_classifier(comment_embs)
-            #2. We train a 2nd Objective: The Similarity Objective
-           
-            aux_labels = torch.argmax(aux_logits, dim=1).flatten()
+        
             
             context_embs = []
-            final_sim_scores = []
+            other_context = []
             
-            context_comment = np.vstack(context_comment)
-            
+            context_comment = np.vstack(context_comment)            
             context_labels = torch.vstack(context_labels)
-            final_label = []
 
-            all_logits = []
-            train_labels = []
-            distance_loss = []
+            final_label = [] 
+            distance_loss = []         
+
+            all_matrix = []
+
+          
+            EUCLIDEAN = lambda x, y: F.pairwise_distance(x, y, p=2)
+
+            negative_context = self.get_embs(context_comment[0, :], labels)
+            positive_context = self.get_embs(context_comment[1, :], labels)           
+           
             
+
             for idx, comment_emb in enumerate(comment_embs): 
-                comment_emb = comment_emb.unsqueeze(0)
-
-                scores = []
-                highest_cosine_score = -1.0
-                most_same_emb = None
-                inherit_labels = []
-               
                 
-                for compare_comment, compare_label in zip(context_comment[:, idx], context_labels[:, idx]): 
-                    compare_comment_emb  = self.get_embs([compare_comment], labels)
-                    
-                    cosine_score = self.similarity(comment_emb, compare_comment_emb)
-                   
-                    if compare_label == labels[idx]:
-                        sim_label = torch.Tensor([1]).to(labels.device)
-                    else: 
-                        sim_label = torch.Tensor([0]).to(labels.device)  #If the label == 0, then the distance between the embeddings is increased
+             
+                distance_matrix_negative = EUCLIDEAN(comment_emb, negative_context)
+                distance_matrix_positive = EUCLIDEAN(comment_emb, positive_context)
+                distance_matrix = torch.hstack((distance_matrix_negative, distance_matrix_positive))
 
-                    if train: 
-                        breakpoint()
-                        distances = 1 - cosine_score
-                        losses = 0.5 * (sim_label.float() * distances.pow(2) + (1 - sim_label).float() * F.relu(   0.2 - distances).pow(2))
-                        distance_loss.append(losses)
-                       
-                    
-                    classifier_embs = torch.hstack((comment_emb, compare_comment_emb))                    
-                    whataboutism_logits = self.classifier(classifier_embs )
-                    
-                    inherit_labels.append(whataboutism_logits)
+                if labels[idx] == 1:
+                    sim_labels_wabt = torch.zeros_like(distance_matrix_negative)
+                    sim_labels_non_wabt = torch.ones_like(distance_matrix_negative)
+                    sim_labels = torch.hstack((sim_labels_wabt, sim_labels_non_wabt)).to(labels.device)
+                else: 
+                    sim_labels_wabt = torch.ones_like(distance_matrix_negative)
+                    sim_labels_non_wabt = torch.zeros_like(distance_matrix_negative)    
+                    sim_labels = torch.hstack((sim_labels_wabt, sim_labels_non_wabt)).to(labels.device)
 
-                    train_labels.append(labels[idx])
-                    
-                    if cosine_score.item() >= highest_cosine_score: # most similar with different label 
-                        most_same_emb = compare_comment_emb
-                        highest_cosine_score = cosine_score.item()
-                    scores.append(cosine_score)
-               
-                inherit_labels = torch.stack(inherit_labels).squeeze(1)  
-                all_logits.append(inherit_labels)             
-                labels_confidence, labels_idx = torch.max(  inherit_labels.squeeze(1), dim=1)
+             
+
+                if train:                    
+                    sim_loss = 0.5 * (sim_labels.float() * distance_matrix.pow(2) + (1 - sim_labels).float() * F.relu(self.margin - distance_matrix).pow(2)).mean()                    
+                    distance_loss.append(sim_loss)
+
+                most_same_emb_negative = negative_context[torch.max(distance_matrix_negative, dim=0)[1]]     
+                most_diff_emb_negative = negative_context[torch.min(distance_matrix_negative, dim=0)[1]]
+                most_same_emb_positive = positive_context[torch.max(distance_matrix_positive, dim=0)[1]]     
+                most_diff_emb_positive = positive_context[torch.min(distance_matrix_positive, dim=0)[1]]               
+                        
+                final_label.append(sim_labels[torch.argmin(distance_matrix)].item()  )
                 
-                if self.best_f1 > 40.0 and context_labels[:, idx][torch.argmax(torch.hstack(scores)).item()].item() != labels[idx] and labels[idx] == 1:
-                    breakpoint()
+                
+                context_embs.append( torch.min(torch.vstack((most_same_emb_negative, most_same_emb_positive)), dim=0)[0] ) 
+
+              
             
-                final_label.append(  context_labels[:, idx][torch.argmax(torch.hstack(scores)).item()].item()  )
-                
-                context_embs.append(most_same_emb)
-                final_sim_scores.append(torch.hstack(scores)) # punish this score???
+               
+            context_embs = torch.stack(context_embs)
             
-            context_embs = torch.stack(context_embs).squeeze(1)
             classifier_embs = torch.hstack((comment_embs, context_embs ))
-            
-        whataboutism_logits = self.classifier(classifier_embs)
+
+           
         
-      
+        
+        whataboutism_logits = self.classifier(classifier_embs)
+        whataboutism_labels = torch.argmax(whataboutism_logits, dim=1).cpu().tolist()
+       
+
         if train:
-            return whataboutism_logits, aux_logits, train_labels, torch.stack(distance_loss).mean()
+            
+            return whataboutism_logits, torch.stack(distance_loss).mean()
         else: 
-            return whataboutism_logits, aux_logits, context_embs, torch.stack(final_sim_scores), final_label
+            return whataboutism_logits, classifier_embs, final_label, whataboutism_labels
 
     def calculate_loss(self, whataboutism_logits, labels, labels_occurence):
         if self.loss == "softmax" or self.loss == "focal":
@@ -241,26 +246,29 @@ class ContextSentenceTransformer(pl.LightningModule):
     
     def on_train_epoch_start(self):
         self.avg_sim_scores = []
+        self.ones_prototypes = []
+        self.zeros_prototypes = []
 
     def training_step(self, batch: dict, _batch_idx: int):        
         comments, labels, opp_comment, context_labels = batch     
         # one comment can have one of five contexts
         
+        samples_per_cls = list(np.bincount(labels.cpu().numpy().astype('int64')))  
+       
         
-        whataboutism_logits, aux_logits, new_labels, sim_loss = self.inference(batch)  
+        whataboutism_logits, sim_loss = self.inference(batch)  
      
 
-        labels_occurence = list(np.bincount(labels.cpu().numpy().astype('int64')))  
-        
-        total_loss = self.calculate_loss(whataboutism_logits, labels, labels_occurence)
        
-        return  sim_loss + total_loss
-    
-    def on_train_epoch_end(self):
         
-        
-        self.epochs += 1    
+        classifier_loss = self.calculate_loss(whataboutism_logits, labels, samples_per_cls)
+        #aux_loss = self.calculate_loss(aux_logits, labels, labels_occurence )
+       
+        return  classifier_loss + (sim_loss * 0.1)
     
+    def on_train_epoch_end(self):        
+        self.epochs += 1  
+       
     
 
     def on_validation_epoch_start(self):
@@ -273,21 +281,26 @@ class ContextSentenceTransformer(pl.LightningModule):
 
         self.train_preds = []
         self.train_labels = []
-    
-    def validation_step(self,  batch: dict, _batch_idx: int):
-        
-        comments_train, labels_train, opp_comment_train, context_labels_train = batch['train']  
-        comments_test, labels_test, opp_comment_test, context_labels_test = batch['test'] 
       
-        whataboutism_logits_test, aux_logits, context_embs, final_sim_scores, final_sim_labels_test = self.inference(batch["test"], train=False)  
-        whataboutism_logits_train, aux_logits, context_embs_train, final_sim_scores, final_sim_labels_train = self.inference(batch["test"], train=False)  
-       
+
         
-        self.val_preds.extend(final_sim_labels_test)
+    
+    def validation_step(self,  batch: dict, _batch_idx: int):       
+       
+        comments_test, labels_test, opp_comment_test, context_labels_test = batch
+      
+        whataboutism_logits_test, context_embs, final_sim_labels_test, pred_labels = self.inference(batch, train=False)  
+        #whataboutism_logits_train, aux_logits, context_embs_train, final_sim_labels_train = self.inference(batch["test"], train=False)  
+        
+        probs = torch.softmax(whataboutism_logits_test, dim=1)[:, 1].cpu().tolist()
+        
+        self.val_preds.extend(pred_labels)
         self.val_labels.extend(labels_test.cpu().tolist())        
         self.val_embs.extend(context_embs.cpu().tolist())
         self.val_comments.extend(comments_test)
-        self.val_probs.extend(final_sim_labels_test)
+        self.val_probs.extend(probs)
+
+        self.similarity_preds.extend(final_sim_labels_test)
 
         
     def on_validation_epoch_end(self):
@@ -295,6 +308,8 @@ class ContextSentenceTransformer(pl.LightningModule):
         self.val_f1 = f1_score(self.val_labels, self.val_preds)*100
 
         #self.train_f1 = f1_score(self.train_labels, self.train_preds)*100
+
+        self.sim_f1 = f1_score(self.val_labels, self.similarity_preds)*100
         
         if self.val_f1 > self.best_f1: 
 
@@ -322,7 +337,7 @@ class ContextSentenceTransformer(pl.LightningModule):
 
         self.log("validation-acc", torch.tensor([self.val_accuracy]), prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
         self.log("validation-f1", self.val_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
-        #self.log("train-f1", self.train_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
+        self.log("sim-f1", self.sim_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
         self.log("best-f1", self.best_f1, prog_bar=True, on_step=False, on_epoch=True, logger=True, sync_dist=True)
 
 
@@ -850,8 +865,13 @@ class ProtoTransformer(ContextSentenceTransformer):
     def __init__(self, train_set, test_set, val_set, learning_rate=0.1, batch_size=8, beta=0.99, gamma=2.5, class_num=2, context=True, loss="focal", cross=False, unlabel_set=None, num_prototype=5):
         super().__init__(train_set, test_set, val_set, learning_rate, batch_size, beta, gamma, class_num, context, loss, cross, unlabel_set)
 
-         
-       
+        
+        
+        self.sent_transformer = AutoModel.from_pretrained("facebook/roberta-hate-speech-dynabench-r4-target")         
+        self.tokenizer = AutoTokenizer.from_pretrained("facebook/roberta-hate-speech-dynabench-r4-target")
+
+        
+               
         # Now I add prototypes 
         self.num_prototype = num_prototype
         self.embedding_dim = 768 # embedding size of Sentence-BERT
@@ -875,7 +895,7 @@ class ProtoTransformer(ContextSentenceTransformer):
     def prototype_learning(self, embs, out_logits, labels, masks):
         pred_seg = torch.max(out_logits, 1)[1]
         mask = (labels == pred_seg.view(-1))
-
+        
         cosine_similarity = torch.mm(embs, self.prototypes.view(-1, self.prototypes.shape[-1]).t())
 
         proto_logits = cosine_similarity
@@ -930,33 +950,9 @@ class ProtoTransformer(ContextSentenceTransformer):
         context_labels = torch.vstack(context_labels)
         
         comment_embs = self.get_embs(comments, labels)
-        
        
-        context_embs = []
-        for idx, comment_emb in enumerate(comment_embs): 
-                comment_emb = comment_emb.unsqueeze(0)
 
-                scores = []
-                lowest_cosine_score = -1.0 
-                most_diff_emb = None
-                
-                for compare_comment, compare_label in zip(context_comment[:, idx], context_labels[:, idx]): 
-                    compare_comment_emb  = self.get_embs([compare_comment], labels)
-                    cosine_score = self.similarity(comment_emb, compare_comment_emb)
-                    if cosine_score.item() >= lowest_cosine_score: # most similar with different label 
-                        most_diff_emb = compare_comment_emb
-                        lowest_cosine_score = cosine_score.item()
-                        self.avg_sim_scores.append(lowest_cosine_score) 
-                    
-                    scores.append(cosine_score)
-                    
-                context_embs.append(most_diff_emb)
-               
-        context_embs = torch.stack(context_embs).squeeze(1)
-        aug_comment_embs = torch.hstack((comment_embs, context_embs))
-                  
-
-        comment_embs = self.cls_head(aug_comment_embs)
+        comment_embs = self.cls_head(comment_embs)
         comment_embs = self.proj_head(comment_embs)
         comment_embs = self.feat_norm(comment_embs)
         comment_embs = l2_normalize(comment_embs)
@@ -991,9 +987,9 @@ class ProtoTransformer(ContextSentenceTransformer):
     
     def validation_step(self,  batch: dict, _batch_idx: int):
         
-        comments_train, labels_train, opp_comment_train, context_labels_train = batch['train']  
-        comments_test, labels_test, opp_comment_test, context_labels_test = batch['test']           
-        preds_test, out_logits, proto_logits, proto_target, probs_test = self.inference(batch["test"], train=False)  
+          
+        comments_test, labels_test, opp_comment_test, context_labels_test = batch       
+        preds_test, out_logits, proto_logits, proto_target, probs_test = self.inference(batch, train=False)  
         
         
         self.val_preds.extend(preds_test.cpu().tolist())

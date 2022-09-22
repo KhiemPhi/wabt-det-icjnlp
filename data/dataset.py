@@ -54,17 +54,22 @@ class WhataboutismDataset(Dataset):
         self.neg_counts = len( np.where(labels==0)[0] )
 
         self.context = context
-        self.num_context = 6
+        self.num_context = 2
         
         self.random = random
         self.title = title
         self.df = df 
-    
+
         
         self.test = test
         self.idx = idx
         self.context_comments = []
-       
+
+        #Remove Idx of Biden Afghanistan
+
+        self.df = df.set_index('Title')
+
+        
      
         if self.context:
             self.aug_to_idx = aug_to_idx            
@@ -73,8 +78,15 @@ class WhataboutismDataset(Dataset):
             self.comments_to_idx = {}
             self.comments_to_context_label = {}
             
-            for idx, comment in enumerate(tqdm.tqdm(self.comments)):            
-                sim_idx = eval(self.df.iloc[idx]["Index"]) # get sim idx for top
+            for idx, comment in enumerate(tqdm.tqdm(self.comments)): 
+                        
+                sim_idx = range(len(df)) # get sim idx for top
+                
+                title = self.titles[idx]
+
+                transcript = eval(self.df.loc[title]['Transcript'][0]) # get the transcript of this video
+                breakpoint()
+                
                 
                 if len(sim_idx) == 0:
                     sim_idx = eval(self.aug_to_idx[comment])
@@ -84,24 +96,27 @@ class WhataboutismDataset(Dataset):
                 # topic_at_idx = self.df.iloc[sim_idx].index.values
                 # label_at_idx = self.df.iloc[sim_idx]["Label"].values
                 
-                
-                
+                topic_at_idx = self.df.iloc[sim_idx].index.values # values 
+                topic = self.topics[idx]
+
+                invalid_topics = np.where(topic_at_idx != topic)[0]
+                invalid_idx = np.hstack((test_idx, invalid_topics))
+
+               
                 sim_idx_train = np.setdiff1d(sim_idx, test_idx)
+
+
+                zero_index =  np.random.choice( np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0],self.num_context // 2 )
+                one_index =   np.random.choice(np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0], self.num_context // 2)
+
+               
+                if len(one_index) < self.num_context // 2:                    
+                    zero_index = np.random.choice(  np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0] , int( self.num_context - len(one_index) ) )
                 
-                
-                
-                if self.test:
-                    zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0][0:(self.num_context // 2)]
-                    one_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0][0:(self.num_context // 2)]
-                    self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index]))
-                    self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Label"].values[zero_index], self.df.iloc[sim_idx_train]["Label"].values[one_index]))
-                    self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index])) )
-                else: 
-                    zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0][0:(self.num_context // 2)]
-                    one_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0][0:(self.num_context // 2)]
-                    self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index]))
-                    self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Label"].values[zero_index], self.df.iloc[sim_idx_train]["Label"].values[one_index]))
-                    self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index])) )
+                self.comments_to_idx[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index]))
+                self.comments_to_context_label[comment] = np.hstack(( self.df.iloc[sim_idx_train]["Label"].values[zero_index], self.df.iloc[sim_idx_train]["Label"].values[one_index]))
+                self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index])) )
+
             
             self.select_indices = np.zeros_like(self.titles)
           
