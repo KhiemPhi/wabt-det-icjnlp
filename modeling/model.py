@@ -55,7 +55,7 @@ class ContextSentenceTransformer(pl.LightningModule):
 
         self.context = context 
         self.cross = cross
-
+      
         if self.cross:
             self.classifier = nn.Linear(384, 2) 
         else: 
@@ -146,9 +146,10 @@ class ContextSentenceTransformer(pl.LightningModule):
         
         return sentence_embeddings
     
+    
     def inference(self, whatabout, train=True):
         
-        comments, labels, context_comment, context_labels = whatabout
+        comments, labels, context_comment, context_labels, transcript = whatabout
        
         final_sim_scores = []
         final_gt_scores = []
@@ -173,6 +174,8 @@ class ContextSentenceTransformer(pl.LightningModule):
             context_labels = torch.vstack(context_labels)
 
             final_label = [] 
+            consistent_logits = []
+            consistent_label = []
             distance_loss = []         
 
             all_matrix = []
@@ -213,10 +216,20 @@ class ContextSentenceTransformer(pl.LightningModule):
                 most_diff_emb_positive = positive_context[torch.min(distance_matrix_positive, dim=0)[1]]               
                         
                 final_label.append(sim_labels[torch.argmin(distance_matrix)].item()  )
-                
-                
-                context_embs.append( torch.min(torch.vstack((most_same_emb_negative, most_same_emb_positive)), dim=0)[0] ) 
 
+            
+                self.avg_distance_positive.append(torch.max(distance_matrix_positive, dim=0)[0].item())
+                self.avg_distance_negative.append(torch.max(distance_matrix_negative, dim=0)[0].item())
+                
+                if train:
+                    if labels[idx] == 0:
+                        context_embs.append( most_same_emb_positive  )
+                    
+                    else: 
+                        context_embs.append( most_same_emb_negative  )
+                else: 
+                    context_embs.append(most_same_emb_positive)
+              
               
             
                
@@ -229,7 +242,8 @@ class ContextSentenceTransformer(pl.LightningModule):
         
         whataboutism_logits = self.classifier(classifier_embs)
         whataboutism_labels = torch.argmax(whataboutism_logits, dim=1).cpu().tolist()
-       
+        
+      
 
         if train:
             
@@ -248,9 +262,12 @@ class ContextSentenceTransformer(pl.LightningModule):
         self.avg_sim_scores = []
         self.ones_prototypes = []
         self.zeros_prototypes = []
+        self.avg_distance_positive = []
+        self.avg_distance_negative = []
+
 
     def training_step(self, batch: dict, _batch_idx: int):        
-        comments, labels, opp_comment, context_labels = batch     
+        comments, labels, opp_comment, context_labels, transcript = batch     
         # one comment can have one of five contexts
         
         samples_per_cls = list(np.bincount(labels.cpu().numpy().astype('int64')))  
@@ -287,7 +304,7 @@ class ContextSentenceTransformer(pl.LightningModule):
     
     def validation_step(self,  batch: dict, _batch_idx: int):       
        
-        comments_test, labels_test, opp_comment_test, context_labels_test = batch
+        comments_test, labels_test, opp_comment_test, context_labels_test, transcript = batch
       
         whataboutism_logits_test, context_embs, final_sim_labels_test, pred_labels = self.inference(batch, train=False)  
         #whataboutism_logits_train, aux_logits, context_embs_train, final_sim_labels_train = self.inference(batch["test"], train=False)  

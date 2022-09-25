@@ -1,0 +1,24 @@
+Number of finished trials: 1
+Best trial:
+  Validation-F1: 51.32743453979492
+  Params Optimized: 
+    gamma: 1.1685178972913968
+    beta: 0.9290152058205693
+                  precision    recall  f1-score   support
+
+
+
+Non-Whataboutism       0.71      0.15      0.25       262
+
+    Whataboutism       0.09      0.59      0.16        39
+
+
+
+        accuracy                           0.21       301
+
+       macro avg       0.40      0.37      0.20       301
+
+    weighted avg       0.63      0.21      0.24       301
+
+
+

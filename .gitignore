@@ -3,7 +3,8 @@ data/__pycache__
 loss_fn/__pycache__
 modeling/__pycache__
 utils/__pycache__
-*.csv
+vis_base
+vis
 *.zip
 *.jpg
 *.png
