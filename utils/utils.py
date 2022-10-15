@@ -188,6 +188,16 @@ def load_comments(csv_path):
     all_title = df[['Title']].values.squeeze()
     all_id = df[["ID"]].values.squeeze()
 
+    # unique_topics = np.unique(all_title)
+    # one_title_idx = np.where(all_title == unique_topics[3])
+
+    # all_comments = df[['Comments']].values.squeeze()[one_title_idx]
+    # all_labels = df[['Label']].values.squeeze()[one_title_idx]
+    # all_topic = df[['Topic']].values.squeeze()[one_title_idx]
+    # all_title = df[['Title']].values.squeeze()[one_title_idx]
+    # all_id = df[["ID"]].values.squeeze()[one_title_idx]
+
+
     if "Transcript" in df.columns:    
         all_transcripts = df[["Transcript"]].values.squeeze()
     else:
@@ -475,7 +485,7 @@ def split_list(a_list):
 
 def train_test_split_helper(comments, titles, labels, topics, ids):
 
-    train_idx, test_idx  = train_split_balance(comments, topics, labels, percentage=0.6)
+    train_idx, test_idx  = train_split_balance(comments, topics, labels, percentage=0.9)
     
     train_comments = comments[train_idx]
     test_comments = comments[test_idx]

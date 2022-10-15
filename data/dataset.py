@@ -67,7 +67,7 @@ class WhataboutismDataset(Dataset):
 
         #Remove Idx of Biden Afghanistan
 
-        #self.df = df.set_index('Title')
+        self.df = df.set_index('Title')
 
         
      
@@ -84,7 +84,6 @@ class WhataboutismDataset(Dataset):
                 
                 title = self.titles[idx]
 
-               
                 
                 
                 if len(sim_idx) == 0:
@@ -98,25 +97,25 @@ class WhataboutismDataset(Dataset):
                 topic_at_idx = self.df.iloc[sim_idx].index.values # values 
                 topic = self.topics[idx]
 
-                invalid_topics = np.where(topic_at_idx != topic)[0]
+                invalid_topics = np.where(self.topics != topic)[0]
                 invalid_idx = np.hstack((test_idx, invalid_topics))
 
                
-                sim_idx_train = np.setdiff1d(sim_idx, test_idx)
+                sim_idx_train = np.setdiff1d(sim_idx, invalid_idx)
 
-                # In which context would my comment be a whatabout
 
-                zero_index =  [title, title] #np.random.choice( np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0],self.num_context // 2 )
-                one_index = [title, title]  #np.random.choice(np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0], self.num_context // 2)
-
-               
-                # if len(one_index) < self.num_context // 2:                    
-                #     zero_index = np.random.choice(  np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0] , int( self.num_context - len(one_index) ) )
                 
-                self.comments_to_idx[comment] = [title, title] #np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index]))
-                self.comments_to_context_label[comment] = [0,0]  #np.hstack(( self.df.iloc[sim_idx_train]["Label"].values[zero_index], self.df.iloc[sim_idx_train]["Label"].values[one_index]))
-                # self.context_comments.extend( np.hstack(( self.df.iloc[sim_idx_train]["Comments"].values[zero_index], self.df.iloc[sim_idx_train]["Comments"].values[one_index])) )
-                self.context_comments.extend([title, title])
+                zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )
+                one_index =   np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )
+                
+                zero_comment = self.df.iloc[sim_idx_train]["Comments"].values[ np.random.choice(zero_index[0], self.num_context)]
+                one_comment = self.df.iloc[sim_idx_train]["Comments"].values[  np.random.choice(one_index[0], self.num_context) ]
+                
+                
+                
+                self.comments_to_idx[comment] = np.hstack(  ( zero_comment, one_comment)      )
+                self.comments_to_context_label[comment] = np.array([0, 0, 1]  )#np.hstack(( self.df.iloc[sim_idx_train]["Label"].values[zero_index], self.df.iloc[sim_idx_train]["Label"].values[one_index]))
+                self.context_comments.extend( np.hstack((zero_comment, one_comment, title)) )
 
             
             self.select_indices = np.zeros_like(self.titles)
@@ -131,8 +130,6 @@ class WhataboutismDataset(Dataset):
         comment = self.comments[idx]
      
         topic = self.topics[idx]
-        title = self.titles[idx]
-        transcript = [] #eval(self.df.loc[title]['Transcript'][0])[::3] # get the transcript of this video
         
 
         # Generate another random comment
@@ -149,7 +146,7 @@ class WhataboutismDataset(Dataset):
                 context_label = list(self.comments_to_context_label[comment][0:self.num_context]       )     
             
             if not self.title:
-                return comment, label, context, context_label, transcript[0:10]
+                return comment, label, context, context_label
             else:
                 return comment, label, self.titles[idx], self.titles[idx]
 

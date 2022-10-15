@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore")
 
 
 
-def load_data(args, file_path="./dataset/annotations_1500_sim_idx.csv", aug_path="./dataset/augment.csv", unlabel_testing=False):
+def load_data(args, file_path="./dataset/annotations_1645_sim_idx.csv", aug_path="./dataset/augment.csv", unlabel_testing=False):
     comments, labels, topics, titles, ids, _, sent_to_related, all_transcript_sents, df  = load_comments(file_path)  # load dataset w/ transcript
    
     queries = np.unique(df.index)
@@ -111,7 +111,8 @@ def objective(trial: optuna.trial.Trial):
         elif args.pro: 
             model = ProtoTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.5,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
         else: 
-            model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99    , gamma=3.38,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
+            
+            model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.999    , gamma=gamma,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
     
     
     else: 
@@ -119,7 +120,7 @@ def objective(trial: optuna.trial.Trial):
     
     trainer = Trainer(devices=[int(args.gpu)] if torch.cuda.is_available() else 0,  accelerator="gpu",
                       max_epochs=args.epochs, auto_select_gpus=True, benchmark=True,        
-                      auto_lr_find=True, check_val_every_n_epoch=1, num_sanity_val_steps=0, callbacks=[checkpoint_callback], logger=True)
+                      auto_lr_find=True, check_val_every_n_epoch=1, num_sanity_val_steps=0, callbacks=[checkpoint_callback], logger=True, accumulate_grad_batches=4)
    
     #hyperparameters = dict(gamma=gamma, beta=beta)
     #trainer.logger.log_hyperparams(hyperparameters)
