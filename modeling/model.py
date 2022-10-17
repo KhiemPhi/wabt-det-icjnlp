@@ -274,15 +274,11 @@ class ContextSentenceTransformer(pl.LightningModule):
         encoder_layer = TransformerEncoderLayer(d_model=384, nhead=8)
         self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=1)
         self.transformer_encoder.apply(init_weights)
-       
-        
-      
+
         if self.cross:
             self.classifier = nn.Linear(384, 2) 
         else: 
             self.classifier = nn.Linear(768, 2)           
-        
-        
      
         self.loss = loss
         self.margin = 5
@@ -309,10 +305,9 @@ class ContextSentenceTransformer(pl.LightningModule):
                 (3) collate_fn: To gather all the batches
                 (4) pin_memory: True to increase performance
         """
-        #train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False)
+        
         test_loader = DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False)
-        # loaders = {"train": train_loader, "test": test_loader}
-        # combined_loaders = CombinedLoader(loaders, "max_size_cycle")
+      
         return test_loader
     
     def val_dataloader(self):
@@ -323,10 +318,9 @@ class ContextSentenceTransformer(pl.LightningModule):
                 (3) collate_fn: To gather all the batches
                 (4) pin_memory: True to increase performance
         """
-        #train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False)
+        
         test_loader = DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False)
-        # loaders = {"train": train_loader, "test": test_loader}
-        # combined_loaders = CombinedLoader(loaders, "max_size_cycle")
+       
         return test_loader
     
     def configure_optimizers(self):   
@@ -393,11 +387,15 @@ class ContextSentenceTransformer(pl.LightningModule):
             context_comment = np.vstack(context_comment)            
             context_labels = torch.vstack(context_labels)
             final_label = [] 
-            sim_loss = []
+            
+            positive_embs = self.get_embs(context_comment[0, :], labels)
+            negative_embs = self.get_embs(context_comment[1, :], labels)
+            
             
             context_single_embs = self.get_embs(context_comment.flatten(), labels)
             
-            all_comments_for_attention = torch.vstack((comment_embs, context_single_embs))
+            all_comments_for_attention = torch.hstack(( negative_embs, comment_embs, positive_embs ))
+            breakpoint()
            
             attention_comments, attn_weight = self.transformer_encoder(all_comments_for_attention) 
             
@@ -437,15 +435,9 @@ class ContextSentenceTransformer(pl.LightningModule):
 
     def training_step(self, batch: dict, _batch_idx: int):        
         comments, labels, opp_comment, context_labels = batch     
-        # one comment can have one of five contexts
-        
+        # one comment can have one of five contexts        
         samples_per_cls = list(np.bincount(labels.cpu().numpy().astype('int64')))  
-       
-        
         whataboutism_logits = self.inference(batch)  
-     
-
-        
         classifier_loss = self.calculate_loss(whataboutism_logits, labels, samples_per_cls)
         #aux_loss = self.calculate_loss(aux_logits, labels, labels_occurence )
        

@@ -105,11 +105,13 @@ class WhataboutismDataset(Dataset):
 
 
                 
-                zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0]
-                one_index =   np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0]
+                zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )
+                one_index =   np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )
                 
-                zero_comment = self.df.iloc[sim_idx_train]["Comments"].values[ zero_index[0]]
-                one_comment = self.df.iloc[sim_idx_train]["Comments"].values[  one_index[0]]
+                zero_comment = self.df.iloc[sim_idx_train]["Comments"].values[np.random.choice(zero_index[0], size=1)]
+                one_comment = self.df.iloc[sim_idx_train]["Comments"].values[np.random.choice(one_index[0], size=1)]
+
+                
                 
                 
                 
@@ -142,8 +144,8 @@ class WhataboutismDataset(Dataset):
                 context_label = list(self.comments_to_context_label[comment]       )     
             else: 
                 
-                context=  list(context_comments[0:self.num_context]) # need to deterministically generate better context, maybe use current embeddings instead for paraings
-                context_label = list(self.comments_to_context_label[comment][0:self.num_context]       )     
+                context=  list(context_comments) # need to deterministically generate better context, maybe use current embeddings instead for paraings
+                context_label = list(self.comments_to_context_label[comment]      )     
             
             if not self.title:
                 return comment, label, context, context_label

@@ -110,8 +110,7 @@ def objective(trial: optuna.trial.Trial):
             model = ContextSentenceTransformerMultiTask(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.85,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
         elif args.pro: 
             model = ProtoTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.5,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
-        else: 
-            
+        else:             
             model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.999    , gamma=gamma,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
     
     
