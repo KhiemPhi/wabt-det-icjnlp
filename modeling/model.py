@@ -243,8 +243,8 @@ class ContextSentenceTransformer(pl.LightningModule):
     def __init__(self, train_set, test_set, val_set, learning_rate=0.1, batch_size=8, beta=0.99, gamma=2.5, class_num=2, context=True, loss="focal", cross=False, unlabel_set=None):
         super().__init__()         
         
-        self.sent_transformer = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L12-v2")         
-        self.tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L12-v2")            
+        self.sent_transformer = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2", output_attentions=True)         
+        self.tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")            
               
         self.train_set = train_set 
         self.test_set = test_set 
@@ -271,8 +271,8 @@ class ContextSentenceTransformer(pl.LightningModule):
         self.context = context 
         self.cross = cross
         
-        encoder_layer = TransformerEncoderLayer(d_model=384, nhead=12)
-        self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=8)
+        encoder_layer = TransformerEncoderLayer(d_model=384, nhead=8)
+        self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=1)
         self.transformer_encoder.apply(init_weights)
        
         
@@ -336,7 +336,7 @@ class ContextSentenceTransformer(pl.LightningModule):
                 (2) Scheduler: Step-wise LR
         """     
         params =  self.parameters()
-        opt =  torch.optim.Adam(params, lr=self.learning_rate)
+        opt =  torch.optim.Adam(params, lr=self.learning_rate, weight_decay=1e-2)
         sch = torch.optim.lr_scheduler.StepLR(opt, step_size=50, gamma=0.1)
         
         return [opt], [sch]
@@ -365,6 +365,7 @@ class ContextSentenceTransformer(pl.LightningModule):
     def get_embs(self, comments, labels):
         comment_tokens = self.get_comment_tokens(comments, labels.device)
         comment_embs = self.sent_transformer(**comment_tokens)
+       
         sentence_embeddings = self.mean_pooling(comment_embs, comment_tokens['attention_mask'])
         
         return sentence_embeddings
@@ -378,6 +379,7 @@ class ContextSentenceTransformer(pl.LightningModule):
         final_gt_scores = []
         context_embs = []
 
+        
         
         if self.cross:
            
@@ -403,7 +405,7 @@ class ContextSentenceTransformer(pl.LightningModule):
             att_weights = torch.max(att_weights, dim=0)[0]
             arg_max_weights = torch.argmax(att_weights, dim=1)[0:comment_embs.shape[0]]
             
-            context_embs = all_comments_for_attention[arg_max_weights]
+            context_embs = attention_comments[arg_max_weights]
             comment_embs = all_comments_for_attention[0:comment_embs.shape[0]]
             
             classifier_embs = torch.hstack((comment_embs, context_embs ))

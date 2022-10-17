@@ -120,7 +120,7 @@ def objective(trial: optuna.trial.Trial):
     
     trainer = Trainer(devices=[int(args.gpu)] if torch.cuda.is_available() else 0,  accelerator="gpu",
                       max_epochs=args.epochs, auto_select_gpus=True, benchmark=True,        
-                      auto_lr_find=True, check_val_every_n_epoch=1, num_sanity_val_steps=0, callbacks=[checkpoint_callback], logger=True, accumulate_grad_batches=4)
+                      auto_lr_find=True, check_val_every_n_epoch=1, num_sanity_val_steps=0, callbacks=[checkpoint_callback], logger=True, accumulate_grad_batches=2)
    
     #hyperparameters = dict(gamma=gamma, beta=beta)
     #trainer.logger.log_hyperparams(hyperparameters)
