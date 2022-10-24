@@ -15,6 +15,111 @@ conda env create -f environment.yml
 
 ## Code Structure
 '''bash
+├── add_pair_column.py
+├── build_data.py
+├── data
+│   ├── dataset.py
+│   └── __init__.py
+├── dataset
+│   ├── annotations_1342.csv
+│   ├── annotations_1500.csv
+│   ├── annotations_1500_sim_idx.csv
+│   ├── annotations_1615.csv
+│   ├── annotations_1645.csv
+│   ├── annotations_1645_sim_idx.csv
+│   ├── annotations_986.csv
+│   ├── augment.csv
+│   └── collect.py
+├── dataset_split.png
+├── dataset_summary_by_title.csv
+├── dataset_summary.csv
+├── dataset_summary.jpg
+├── environment.yml
+├── experiment.sh
+├── LICENSE
+├── loss_fn
+│   ├── __init__.py
+│   └── loss.py
+├── modeling
+│   ├── __init__.py
+│   ├── model.py
+│   ├── proto.py
+│   └── self_sup.py
+├── README.md
+├── results
+│   ├── dataset_summary_by_title.csv
+│   ├── dataset_summary.csv
+│   └── test.jpg
+├── test.jpg
+├── test.py
+├── train.py
+├── utils
+│   ├── __init__.py
+│   └── utils.py
+├── vis
+│   ├── label_dataset_summary.jpg
+│   ├── test_label_dataset_summary.jpg
+│   ├── topic_dataset_summary.jpg
+│   ├── train_label_dataset_summary.jpg
+│   ├── tSNE
+│   │   ├── test-tSNE-epoch-0.jpg
+│   │   ├── test-tSNE-epoch-10.jpg
+│   │   ├── test-tSNE-epoch-11.jpg
+│   │   ├── test-tSNE-epoch-12.jpg
+│   │   ├── test-tSNE-epoch-13.jpg
+│   │   ├── test-tSNE-epoch-14.jpg
+│   │   ├── test-tSNE-epoch-15.jpg
+│   │   ├── test-tSNE-epoch-1.jpg
+│   │   ├── test-tSNE-epoch-20.jpg
+│   │   ├── test-tSNE-epoch-26.jpg
+│   │   ├── test-tSNE-epoch-2.jpg
+│   │   ├── test-tSNE-epoch-3.jpg
+│   │   ├── test-tSNE-epoch-4.jpg
+│   │   ├── test-tSNE-epoch-5.jpg
+│   │   ├── test-tSNE-epoch-6.jpg
+│   │   ├── test-tSNE-epoch-7.jpg
+│   │   ├── test-tSNE-epoch-8.jpg
+│   │   └── test-tSNE-epoch-9.jpg
+│   ├── validation_acc_tab.txt
+│   ├── validation_results_1342.csv
+│   ├── validation_results_1615.csv
+│   └── validation_results_unlabeled.csv
+└── Whataboutism-Detection-ACL-2022-main
+    ├── dataset
+    │   ├── annotations_1342.csv
+    │   ├── CNN_Impeachment trial of President Donald Trump.json
+    │   ├── collect.py
+    │   ├── Fox News_Trump Impeachment Inquiry.json
+    │   ├── george_floyd.json
+    │   ├── transcript_whataboutism_985.csv
+    │   ├── trump_biden.json
+    │   ├── trump_impeachment.json
+    │   ├── unite_the_right_rally_charlottesville.json
+    │   └── us_soldier_russian_bounty.json
+    ├── label-spread
+    │   ├── annotations_1500.csv
+    │   ├── annotations_200.csv
+    │   ├── annotations_200_sim.csv
+    │   ├── baseline_label_spread.py
+    │   ├── best_seed_list.csv
+    │   ├── best_seed_list_tf_idf.csv
+    │   ├── correct_and_smooth.py
+    │   ├── dataset.py
+    │   ├── failure_cases.csv
+    │   ├── failure_cases_tf_idf.csv
+    │   ├── features_raw.npy
+    │   └── reddit_impeachment_scores.csv
+    ├── README.md
+    └── sent-trans-model
+        ├── data
+        │   ├── dataset.py
+        │   └── __init__.py
+        ├── modeling
+        │   └── model.py
+        ├── test.py
+        ├── train.py
+        └── utils
+            ├── __init__.py
 
 '''
 
