@@ -2,7 +2,13 @@
 [![conda](https://img.shields.io/conda/vn/conda-forge/optuna.svg)](https://anaconda.org/conda-forge/optuna)
 
 # WABT-DET-CONTEXT
-This is the official source code for **Whataboutism Detection Using Context From Topical Discourse**. 
+This is the official source code for **Whataboutism Detection Using Context From Topical Discourse**.  Our methodology are built upon two observations:
+
+(1) Whataboutism are alike each other pragmatically across topics. 
+(2) To model these pragmatics, if we create a combine embedding of whataboutism + non-whataboutism embedding, we will be able to classifiy each classes with a simple MLP head
+(3) However, this does not generalize because we do not have access of labels during test time. 
+(4) We can try to use Cosine-Similarity or Euclidean Distance to simulate embeddings having a different label but these metrics break down in high dimiesions such as BERT-embeddings
+(5) Therefore, we train a seperate transformer encoder that can learn a seperate distance-attention function which is more robust than Cosine or Euclidean distance.
 
 
 ## Instalation:
@@ -125,7 +131,8 @@ conda env create -f environment.yml
 
 ## Datasets
 
-Located in the dataset folder are the .csv files containg the YouTube comments and their Whataboutism Annotations.
+Located in the dataset folder are the .csv files containg the YouTube comments and their Whataboutism Annotations. We have various versions of the dataset including 
+versions of 986, 1500 and 1642 comments, all hand-annotated and collected. 
 
 You can collect more data for further testing by using the following command:
 
