@@ -7,8 +7,11 @@ This is the official source code for **Whataboutism Detection Using Context From
 (1) Whataboutism are alike each other pragmatically across topics. 
 
 (2) To model these pragmatics, if we create a combine embedding of whataboutism + non-whataboutism embedding, we will be able to classifiy each classes with a simple MLP head
+
 (3) However, this does not generalize because we do not have access of labels during test time. 
+
 (4) We can try to use Cosine-Similarity or Euclidean Distance to simulate embeddings having a different label but these metrics break down in high dimiesions such as BERT-embeddings
+
 (5) Therefore, we train a seperate transformer encoder that can learn a seperate distance-attention function which is more robust than Cosine or Euclidean distance.
 
 
