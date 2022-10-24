@@ -14,7 +14,7 @@ conda env create -f environment.yml
 ```
 
 ## Code Structure
-'''bash
+```bash
 ├── add_pair_column.py
 ├── build_data.py
 ├── data
@@ -121,7 +121,7 @@ conda env create -f environment.yml
         └── utils
             ├── __init__.py
 
-'''
+```
 
 ## Datasets
 
