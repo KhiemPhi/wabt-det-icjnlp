@@ -93,7 +93,7 @@ def load_data(args, file_path="./dataset/annotations_1645_sim_idx.csv", aug_path
 def objective(trial: optuna.trial.Trial):
 
     gamma = trial.suggest_float("gamma", 0.5, 3.5) #best gamma is 3.38, best beta is 0.999``      
-    beta = trial.suggest_float("beta", 0.9, 0.999) #best gamma is 3.38, best beta is 0.999``     
+    beta = trial.suggest_float("beta", 0.999, 0.999) #best gamma is 3.38, best beta is 0.999``     
     
     train_set, test_set, unlabel_set, val_set = load_data(args)
 
@@ -111,7 +111,7 @@ def objective(trial: optuna.trial.Trial):
         elif args.pro: 
             model = ProtoTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.99, gamma=1.5,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
         else:             
-            model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.999    , gamma=gamma,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
+            model = ContextSentenceTransformer(train_set, test_set, val_set, learning_rate=args.learning_rate, batch_size=args.batch_size, beta=0.999    , gamma=3.019,class_num=2, context=args.context, loss=args.loss, cross=False, unlabel_set=unlabel_set)
     
     
     else: 
@@ -119,7 +119,7 @@ def objective(trial: optuna.trial.Trial):
     
     trainer = Trainer(devices=[int(args.gpu)] if torch.cuda.is_available() else 0,  accelerator="gpu",
                       max_epochs=args.epochs, auto_select_gpus=True, benchmark=True,        
-                      auto_lr_find=True, check_val_every_n_epoch=1, num_sanity_val_steps=0, callbacks=[checkpoint_callback], logger=True, accumulate_grad_batches=2)
+                      auto_lr_find=True, check_val_every_n_epoch=1, num_sanity_val_steps=0, callbacks=[checkpoint_callback], logger=True, accumulate_grad_batches=4)
    
     #hyperparameters = dict(gamma=gamma, beta=beta)
     #trainer.logger.log_hyperparams(hyperparameters)

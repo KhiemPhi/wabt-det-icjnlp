@@ -271,8 +271,8 @@ class ContextSentenceTransformer(pl.LightningModule):
         self.context = context 
         self.cross = cross
         
-        encoder_layer = TransformerEncoderLayer(d_model=384, nhead=8)
-        self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=1)
+        encoder_layer = TransformerEncoderLayer(d_model=384, nhead=16)
+        self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=6)
         self.transformer_encoder.apply(init_weights)
 
         if self.cross:
@@ -282,10 +282,7 @@ class ContextSentenceTransformer(pl.LightningModule):
      
         self.loss = loss
         self.margin = 5
-        
     
-    def label_miner(self, context_candidates, candidates_labels):
-        return 0
     
     def train_dataloader(self):
         """
@@ -387,24 +384,21 @@ class ContextSentenceTransformer(pl.LightningModule):
             context_comment = np.vstack(context_comment)            
             context_labels = torch.vstack(context_labels)
             final_label = [] 
-            
-            positive_embs = self.get_embs(context_comment[0, :], labels)
-            negative_embs = self.get_embs(context_comment[1, :], labels)
-            
-            
+            sim_loss = []
+            #neg_context = self.get_embs(context_comment[0, :], labels)
+            #pos_context = self.get_embs(context_comment[1, :], labels)           
+
             context_single_embs = self.get_embs(context_comment.flatten(), labels)
             
-            all_comments_for_attention = torch.hstack(( negative_embs, comment_embs, positive_embs ))
-            breakpoint()
-           
+            all_comments_for_attention = torch.vstack((comment_embs, context_single_embs))
             attention_comments, attn_weight = self.transformer_encoder(all_comments_for_attention) 
             
             att_weights = torch.stack(attn_weight)
-            att_weights = torch.max(att_weights, dim=0)[0]
-            arg_max_weights = torch.argmax(att_weights, dim=1)[0:comment_embs.shape[0]]
+            att_weights = torch.mean(att_weights, dim=0)
+            arg_max_weights = torch.argmin(att_weights, dim=1)[0:comment_embs.shape[0]]
             
             context_embs = attention_comments[arg_max_weights]
-            comment_embs = all_comments_for_attention[0:comment_embs.shape[0]]
+            comment_embs = attention_comments[0:comment_embs.shape[0]]
             
             classifier_embs = torch.hstack((comment_embs, context_embs ))
             whataboutism_logits = self.classifier(classifier_embs)

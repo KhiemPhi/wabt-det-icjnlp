@@ -14,29 +14,9 @@ conda env create -f environment.yml
 ```
 
 ## Code Structure
-├── data
-│   ├── dataset.py
-│   ├── __init__.py
-├── dataset
-│   ├── annotations_1342.csv
-│   ├── augment.csv
-│   ├── collect.py
-│   └── transcript_whataboutism_985.csv
-├── environment.yml
-├── experiment.sh
-├── LICENSE
-├── loss_fn
-│   ├── __init__.py
-│   ├── loss.py
-├── modeling
-│   ├── __init__.py
-│   ├── model.py
-├── README.md
-├── train.py
-├── utils
-│   ├── __init__.py
-│   └── utils.py
+'''bash
 
+'''
 
 ## Datasets
 

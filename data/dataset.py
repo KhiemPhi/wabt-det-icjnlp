@@ -54,7 +54,7 @@ class WhataboutismDataset(Dataset):
         self.neg_counts = len( np.where(labels==0)[0] )
 
         self.context = context
-        self.num_context = 1
+        self.num_context = 2
         
         self.random = random
         self.title = title
@@ -97,20 +97,25 @@ class WhataboutismDataset(Dataset):
                 topic_at_idx = self.df.iloc[sim_idx].index.values # values 
                 topic = self.topics[idx]
 
-                invalid_topics = np.where(self.topics == topic)[0]
+                title = self.titles[idx]
+
+                invalid_topics = np.where(self.titles != title)[0]
                 invalid_idx = np.hstack((test_idx, invalid_topics))
 
                
                 sim_idx_train = np.setdiff1d(sim_idx, test_idx)
+                
 
 
                 
-                zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )
-                one_index =   np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )
+                zero_index = np.where( self.df.iloc[sim_idx_train]["Label"] == 0 )[0]
+                one_index =   np.where( self.df.iloc[sim_idx_train]["Label"] == 1 )[0]
                 
-                zero_comment = self.df.iloc[sim_idx_train]["Comments"].values[np.random.choice(zero_index[0], size=1)]
-                one_comment = self.df.iloc[sim_idx_train]["Comments"].values[np.random.choice(one_index[0], size=1)]
-
+                # zero_comment = self.df.iloc[sim_idx_train]["Comments"].values[ np.random.choice(zero_index, 1)]
+                # one_comment = self.df.iloc[sim_idx_train]["Comments"].values[ np.random.choice(one_index, 1) ]
+                
+                zero_comment = self.df.iloc[sim_idx_train]["Comments"].values[zero_index[0]]
+                one_comment = self.df.iloc[sim_idx_train]["Comments"].values[ one_index[0]]
                 
                 
                 
@@ -140,12 +145,12 @@ class WhataboutismDataset(Dataset):
          
             if len(context_comments) > 0 and self.test:
               
-                context=  list(context_comments) # need to deterministically generate better context, maybe use current embeddings instead for paraings
-                context_label = list(self.comments_to_context_label[comment]       )     
+                context=  list(context_comments[0:self.num_context]) # need to deterministically generate better context, maybe use current embeddings instead for paraings
+                context_label = list(self.comments_to_context_label[comment][0:self.num_context]       )    
             else: 
                 
-                context=  list(context_comments) # need to deterministically generate better context, maybe use current embeddings instead for paraings
-                context_label = list(self.comments_to_context_label[comment]      )     
+                context=  list(context_comments[0:self.num_context]) # need to deterministically generate better context, maybe use current embeddings instead for paraings
+                context_label = list(self.comments_to_context_label[comment][0:self.num_context]       )     
             
             if not self.title:
                 return comment, label, context, context_label

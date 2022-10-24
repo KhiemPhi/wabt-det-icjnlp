@@ -323,7 +323,7 @@ def train_split_balance(all_comments, all_topics, all_labels, percentage=0.6):
         topic_index = test_df[ test_df["Topic"] == topic ].index 
         topic_labels = test_df[ test_df["Topic"] == topic ]["Labels"].values
 
-        # Let's try to split this deterministically 
+        # Let's try to split this deterministically, no randomness
         neg_num, pos_num = np.bincount(topic_labels)
         positive_examples = np.array(topic_index[np.where(topic_labels==1)])
         negative_examples = np.array(topic_index[np.where(topic_labels==0)])
@@ -485,7 +485,7 @@ def split_list(a_list):
 
 def train_test_split_helper(comments, titles, labels, topics, ids):
 
-    train_idx, test_idx  = train_split_balance(comments, topics, labels, percentage=0.9)
+    train_idx, test_idx  = train_split_balance(comments, topics, labels, percentage=0.8)
     
     train_comments = comments[train_idx]
     test_comments = comments[test_idx]
